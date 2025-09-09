@@ -1,0 +1,19 @@
+{
+  "name": "hanet-gemini-v3-server",
+  "version": "1.0.0",
+  "description": "Server for Hanet Gemini V3 project",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.19.2",
+    "moment-timezone": "^0.5.45",
+    "mssql": "^10.0.2"
+  }
+}
