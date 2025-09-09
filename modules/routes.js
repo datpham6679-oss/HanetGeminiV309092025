@@ -8,96 +8,107 @@ import moment from 'moment-timezone';
 const router = express.Router();
 
 router.post('/hanet-webhook', async (req, res) => {
-    let p = req.body;
-    
-    if (!p || typeof p !== 'object' || Object.keys(p).length === 0) {
-        try {
-            const rawBody = req.body.toString('utf8');
-            p = qs.parse(rawBody);
-            if (p.payload) p = JSON.parse(p.payload);
-            else if (p.data) p = JSON.parse(p.data);
-            else {
-                console.error("❌ Payload rỗng hoặc không đúng định dạng. Raw body:", rawBody);
-                return res.status(400).json({ error: 'Invalid payload' });
-            }
-        } catch (e) {
-            console.error("❌ Lỗi phân tích payload:", e.message);
-            return res.status(400).json({ error: 'Invalid payload' });
-        }
-    }
+    let p = req.body;
+    
+    if (!p || typeof p !== 'object' || Object.keys(p).length === 0) {
+        try {
+            const rawBody = req.body.toString('utf8');
+            p = qs.parse(rawBody);
+            if (p.payload) p = JSON.parse(p.payload);
+            else if (p.data) p = JSON.parse(p.data);
+            else {
+                console.error("❌ Payload rỗng hoặc không đúng định dạng. Raw body:", rawBody);
+                return res.status(400).json({ error: 'Invalid payload' });
+            }
+        } catch (e) {
+            console.error("❌ Lỗi phân tích payload:", e.message);
+            return res.status(400).json({ error: 'Invalid payload' });
+        }
+    }
 
-    const vnFull = helpers.normalizeDateString(p.date) || helpers.epochToVNString(p.time);
-    const { tsVN, hmsVN, dmyVN } = helpers.buildTimes(vnFull);
+    const vnFull = helpers.normalizeDateString(p.date) || helpers.epochToVNString(p.time);
+    const { tsVN, hmsVN, dmyVN } = helpers.buildTimes(vnFull);
 
-    const type = helpers.resolveEventType(p.deviceName);
-    const empName = p.personName || '-';
-    const deviceName = p.deviceName || '-';
-    const deviceId = p.deviceID || '-';
-    const eventId = p.id || `${Date.now()}-${Math.random()}`;
+    const type = helpers.resolveEventType(p.deviceName);
+    const empName = p.personName || '-';
+    const deviceName = p.deviceName || '-';
+    const deviceId = p.deviceID || '-';
+    const eventId = p.id || `${Date.now()}-${Math.random()}`;
 
-    try {
-        const pool = await poolPromise;
-        const request = await pool.request();
+    try {
+        const pool = await poolPromise;
+        const request = await pool.request();
 
-        request.input('event_id', sql.NVarChar(100), eventId);
-        request.input('employee_code', sql.NVarChar(50), p.employee_code || null);
-        request.input('person_id', sql.NVarChar(50), p.personID || null);
-        request.input('employee_name', sql.NVarChar(200), empName);
-        request.input('device_id', sql.NVarChar(100), deviceId);
-        request.input('device_name', sql.NVarChar(200), deviceName);
-        request.input('event_type', sql.NVarChar(20), type);
-        request.input('ts_vn', sql.NVarChar(19), tsVN);
-        request.input('payload_json', sql.NVarChar(sql.MAX), JSON.stringify(p));
+        request.input('event_id', sql.NVarChar(100), eventId);
+        request.input('employee_code', sql.NVarChar(50), p.employee_code || null);
+        request.input('person_id', sql.NVarChar(50), p.personID || null);
+        request.input('employee_name', sql.NVarChar(200), empName);
+        request.input('device_id', sql.NVarChar(100), deviceId);
+        request.input('device_name', sql.NVarChar(200), deviceName);
+        request.input('event_type', sql.NVarChar(20), type);
+        request.input('ts_vn', sql.NVarChar(19), tsVN);
+        request.input('payload_json', sql.NVarChar(sql.MAX), JSON.stringify(p));
 
-        await request.query(`
-            MERGE dbo.hanet_events_raw AS tgt
-            USING (SELECT
-                @event_id AS event_id,
-                @employee_code AS employee_code,
-                @person_id AS person_id,
-                @employee_name AS employee_name,
-                @device_id AS device_id,
-                @device_name AS device_name,
-                @event_type AS event_type,
-                CONVERT(datetime2(0), @ts_vn, 120) AS ts_vn,
-                @payload_json AS payload_json
-            ) AS src
-            ON tgt.event_id = src.event_id
-            WHEN NOT MATCHED THEN
-                INSERT (event_id, employee_code, person_id, employee_name, device_id, device_name, event_type, ts_vn, payload_json, DaXuLy)
-                VALUES (src.event_id, src.employee_code, src.person_id, src.employee_name, src.device_id, src.device_name, src.event_type, src.ts_vn, src.payload_json, 0);
-        `);
+        await request.query(`
+            MERGE dbo.hanet_events_raw AS tgt
+            USING (SELECT
+                @event_id AS event_id,
+                @employee_code AS employee_code,
+                @person_id AS person_id,
+                @employee_name AS employee_name,
+                @device_id AS device_id,
+                @device_name AS device_name,
+                @event_type AS event_type,
+                CONVERT(datetime2(0), @ts_vn, 120) AS ts_vn,
+                @payload_json AS payload_json
+            ) AS src
+            ON tgt.event_id = src.event_id
+            WHEN NOT MATCHED THEN
+                INSERT (event_id, employee_code, person_id, employee_name, device_id, device_name, event_type, ts_vn, payload_json, DaXuLy)
+                VALUES (src.event_id, src.employee_code, src.person_id, src.employee_name, src.device_id, src.device_name, src.event_type, src.ts_vn, src.payload_json, 0);
+        `);
 
-        await request.query(`EXEC sp_XuLyChamCongMoi`);
-        await request.query(`EXEC sp_XuLyChamCong_VH`);
-        
-    } catch (e) {
-        console.error('❌ Lỗi lưu SQL:', e.message);
-        return res.status(500).json({ error: 'Database error' });
-    }
-    
-    console.log(`📌 [${type}] ${hmsVN} (VN)`);
-    console.log(`👤 Nhân viên : ${empName}`);
-    console.log(`🏢 Thiết bị : ${deviceName} (ID=${deviceId})`);
-    console.log(`Thời gian: ${hmsVN} ${dmyVN}`);
+        await request.query(`EXEC sp_XuLyChamCongMoi`);
+        await request.query(`EXEC sp_XuLyChamCong_VH`);
+        
+    } catch (e) {
+        console.error('❌ Lỗi lưu SQL:', e.message);
+        return res.status(500).json({ error: 'Database error' });
+    }
+    
+    console.log(`📌 [${type}] ${hmsVN} (VN)`);
+    console.log(`👤 Nhân viên : ${empName}`);
+    console.log(`🏢 Thiết bị : ${deviceName} (ID=${deviceId})`);
+    console.log(`Thời gian: ${hmsVN} ${dmyVN}`);
 
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({ ok: true });
 });
 
-// Thay đổi endpoint /report/excel
+// Endpoint mới để lấy danh sách phòng ban
+router.get('/departments', async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request().query('SELECT DISTINCT PhongBan FROM NhanVien WHERE PhongBan IS NOT NULL AND PhongBan != \'\' ORDER BY PhongBan;');
+        const departments = result.recordset.map(row => row.PhongBan);
+        res.json(departments);
+    } catch (err) {
+        console.error('SQL Server query error:', err);
+        res.status(500).send('Lỗi máy chủ khi lấy danh sách phòng ban');
+    }
+});
+
 router.get('/report/excel', async (req, res) => {
     try {
         const pool = await poolPromise;
         const request = await pool.request();
 
-        // Đảm bảo truy vấn lấy đủ tất cả các trường dữ liệu cần thiết
         const result = await request.query(`
             SELECT
                 nv.MaNhanVienNoiBo,
                 nv.HoTen,
                 c.Ngay, 
-                CONVERT(DATE, c.GioVao) AS NgayVao,  -- Thêm lại trường này
-                CONVERT(DATE, c.GioRa) AS NgayRa,    -- Thêm lại trường này
+                CONVERT(DATE, c.GioVao) AS NgayVao, 
+                CONVERT(DATE, c.GioRa) AS NgayRa, 
                 CONVERT(VARCHAR(8), c.GioVao, 108) AS GioVao,
                 CONVERT(VARCHAR(8), c.GioRa, 108) AS GioRa,
                 c.ThoiGianLamViec,
@@ -136,60 +147,65 @@ router.get('/report/excel', async (req, res) => {
 });
 
 router.get('/attendance-data', async (req, res) => {
-    try {
-        const pool = await poolPromise;
-        const { startDate, endDate, personId, status } = req.query;
+    try {
+        const pool = await poolPromise;
+        const { startDate, endDate, personId, status, department } = req.query;
 
-        let query = `
-            SELECT
-                nv.MaNhanVienNoiBo,
-                nv.HoTen,
-                c.Ngay,
-                c.GioVao,
-                c.GioRa,
-                c.ThoiGianLamViec,
-                c.TrangThai
-            FROM ChamCongDaXuLyMoi AS c
-            JOIN NhanVien AS nv ON c.MaNhanVienNoiBo = nv.MaNhanVienNoiBo
-        `;
+        let query = `
+            SELECT
+                nv.MaNhanVienNoiBo,
+                nv.HoTen,
+                c.Ngay,
+                c.GioVao,
+                c.GioRa,
+                c.ThoiGianLamViec,
+                c.TrangThai
+            FROM ChamCongDaXuLyMoi AS c
+            JOIN NhanVien AS nv ON c.MaNhanVienNoiBo = nv.MaNhanVienNoiBo
+        `;
 
-        const whereClauses = [];
-        const request = await new sql.Request(pool);
+        const whereClauses = [];
+        const request = await new sql.Request(pool);
 
-        if (startDate) {
-            whereClauses.push(`c.Ngay >= @startDate`);
-            request.input('startDate', sql.Date, startDate);
-        }
+        if (startDate) {
+            whereClauses.push(`c.Ngay >= @startDate`);
+            request.input('startDate', sql.Date, startDate);
+        }
 
-        if (endDate) {
-            whereClauses.push(`c.Ngay <= @endDate`);
-            request.input('endDate', sql.Date, endDate);
-        }
+        if (endDate) {
+            whereClauses.push(`c.Ngay <= @endDate`);
+            request.input('endDate', sql.Date, endDate);
+        }
 
-        if (personId) {
-            whereClauses.push(`nv.MaNhanVienNoiBo = @personId`);
-            request.input('personId', sql.NVarChar(50), personId);
-        }
-        
-        // Thêm điều kiện này để đảm bảo chỉ xử lý khi status có giá trị
-        if (status) {
-            whereClauses.push(`LTRIM(RTRIM(c.TrangThai)) = @status`);
-            request.input('status', sql.NVarChar(50), status.trim());
-        }
+        if (personId) {
+            whereClauses.push(`nv.MaNhanVienNoiBo = @personId`);
+            request.input('personId', sql.NVarChar(50), personId);
+        }
 
-        if (whereClauses.length > 0) {
-            query += ' WHERE ' + whereClauses.join(' AND ');
-        }
+        if (status) {
+            whereClauses.push(`LTRIM(RTRIM(c.TrangThai)) = @status`);
+            request.input('status', sql.NVarChar(50), status.trim());
+        }
 
-        query += ' ORDER BY c.Ngay DESC;';
+        // Thêm điều kiện lọc theo phòng ban
+        if (department) {
+            whereClauses.push(`nv.PhongBan = @department`);
+            request.input('department', sql.NVarChar(100), department);
+        }
 
-        const result = await request.query(query);
+        if (whereClauses.length > 0) {
+            query += ' WHERE ' + whereClauses.join(' AND ');
+        }
 
-        res.json(result.recordset);
-    } catch (err) {
-        console.error('SQL Server query error:', err);
-        res.status(500).json({ error: 'Lỗi máy chủ khi lấy dữ liệu' });
-    }
+        query += ' ORDER BY c.Ngay DESC;';
+
+        const result = await request.query(query);
+
+        res.json(result.recordset);
+    } catch (err) {
+        console.error('SQL Server query error:', err);
+        res.status(500).json({ error: 'Lỗi máy chủ khi lấy dữ liệu' });
+    }
 });
 
 export default router;

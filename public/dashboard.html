@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Chấm Công</title>
+    <title>CÔNG TY THỦY ĐIỆN BUÔN KUỐP CHECKIN 4.0</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
         .container { max-width: 1200px; margin: auto; padding: 20px; background-color: #fff; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        h1 { color: #333; text-align: center; }
+        h1 { color: #333; text-align: center; margin-bottom: 0; }
+        h2.subtitle { color: #555; text-align: center; margin-top: 5px; font-size: 1.2em; font-weight: normal; }
         .filters { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; padding: 15px; background-color: #f9f9f9; border-radius: 8px; }
         .filters label, .filters input, .filters select { font-size: 14px; }
         .filters button { padding: 8px 15px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
@@ -23,7 +24,8 @@
 </head>
 <body>
     <div class="container">
-        <h1>Dashboard Chấm Công</h1>
+        <h1>CÔNG TY THỦY ĐIỆN BUÔN KUỐP</h1>
+        <h2 class="subtitle">CHECKIN 4.0</h2>
         
         <div class="filters">
             <div>
@@ -37,6 +39,12 @@
             <div>
                 <label for="personId">Mã Nhân viên:</label>
                 <input type="text" id="personId" placeholder="VD: 300029">
+            </div>
+            <div>
+                <label for="department">Phòng ban:</label>
+                <select id="department">
+                    <option value="">-- Tất cả --</option>
+                </select>
             </div>
             <div>
                 <label for="status">Trạng thái:</label>
@@ -79,26 +87,55 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', fetchAndDisplayData);
-        let currentData = []; // Biến toàn cục để lưu trữ dữ liệu hiện tại
+        document.addEventListener('DOMContentLoaded', async () => {
+            await populateDepartments();
+            fetchAndDisplayData();
+        });
+
+        let currentData = [];
+        
+        async function populateDepartments() {
+            try {
+                const response = await fetch('/departments');
+                if (!response.ok) {
+                    throw new Error('Lỗi khi lấy danh sách phòng ban.');
+                }
+                const departments = await response.json();
+                const departmentSelect = document.getElementById('department');
+                
+                departments.forEach(dept => {
+                    const option = document.createElement('option');
+                    option.value = dept;
+                    option.textContent = dept;
+                    departmentSelect.appendChild(option);
+                });
+
+            } catch (error) {
+                console.error('Lỗi khi điền bộ lọc phòng ban:', error);
+            }
+        }
 
         async function fetchAndDisplayData() {
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
             const personId = document.getElementById('personId').value;
+            const department = document.getElementById('department').value;
             const status = document.getElementById('status').value;
 
             const params = new URLSearchParams();
-            if (startDate !== '') {
+            if (startDate) {
                 params.append('startDate', startDate);
             }
-            if (endDate !== '') {
+            if (endDate) {
                 params.append('endDate', endDate);
             }
-            if (personId !== '') {
+            if (personId) {
                 params.append('personId', personId);
             }
-            if (status !== '') {
+            if (department) {
+                params.append('department', department);
+            }
+            if (status) {
                 params.append('status', status);
             }
 
@@ -112,7 +149,6 @@
                 }
                 const data = await response.json();
                 
-                // Lưu dữ liệu vào biến toàn cục để sử dụng cho chức năng xuất Excel
                 currentData = data;
                 
                 displayTableData(data);
@@ -126,60 +162,56 @@
         }
 
         function displayTableData(data) {
-        const tbody = document.getElementById('attendance-data');
-        tbody.innerHTML = ''; // Xóa dữ liệu cũ
+            const tbody = document.getElementById('attendance-data');
+            tbody.innerHTML = '';
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="9">Không có dữ liệu chấm công nào.</td></tr>`;
+                return;
+            }
+            data.forEach(item => {
+                const row = document.createElement('tr');
+                
+                const formattedNgay = new Date(item.Ngay).toLocaleDateString('vi-VN');
+                
+                let formattedNgayVao = '---';
+                let formattedNgayRa = '---';
+                let formattedGioVao = '---';
+                let formattedGioRa = '---';
 
-        if (data.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9">Không có dữ liệu chấm công nào.</td></tr>`;
-            return;
+                if (item.GioVao) {
+                    const dateVao = new Date(item.GioVao);
+                    formattedNgayVao = dateVao.toLocaleDateString('vi-VN', { timeZone: 'UTC' });
+                    formattedGioVao = dateVao.toLocaleTimeString('vi-VN', { 
+                        hour: '2-digit', 
+                        minute: '2-digit', 
+                        timeZone: 'UTC' 
+                    });
+                }
+
+                if (item.GioRa) {
+                    const dateRa = new Date(item.GioRa);
+                    formattedNgayRa = dateRa.toLocaleDateString('vi-VN', { timeZone: 'UTC' });
+                    formattedGioRa = dateRa.toLocaleTimeString('vi-VN', { 
+                        hour: '2-digit', 
+                        minute: '2-digit', 
+                        timeZone: 'UTC' 
+                    });
+                }
+
+                row.innerHTML = `
+                    <td>${item.MaNhanVienNoiBo}</td>
+                    <td>${item.HoTen}</td>
+                    <td>${formattedNgay}</td>
+                    <td>${formattedNgayVao}</td>
+                    <td>${formattedNgayRa}</td>
+                    <td>${formattedGioVao}</td>
+                    <td>${formattedGioRa}</td>
+                    <td>${item.ThoiGianLamViec ? item.ThoiGianLamViec.toFixed(4) : '---'}</td>
+                    <td>${item.TrangThai}</td>
+                `;
+                tbody.appendChild(row);
+            });
         }
-
-        data.forEach(item => {
-            const row = document.createElement('tr');
-            
-            // Lấy và định dạng ngày tháng
-            const formattedNgay = new Date(item.Ngay).toLocaleDateString('vi-VN');
-            
-            // Xử lý ngày/giờ vào và ra
-            let formattedNgayVao = '---';
-            let formattedNgayRa = '---';
-            let formattedGioVao = '---';
-            let formattedGioRa = '---';
-
-            if (item.GioVao) {
-                const dateVao = new Date(item.GioVao);
-                formattedNgayVao = dateVao.toLocaleDateString('vi-VN', { timeZone: 'UTC' });
-                formattedGioVao = dateVao.toLocaleTimeString('vi-VN', { 
-                    hour: '2-digit', 
-                    minute: '2-digit', 
-                    timeZone: 'UTC' 
-                });
-            }
-
-            if (item.GioRa) {
-                const dateRa = new Date(item.GioRa);
-                formattedNgayRa = dateRa.toLocaleDateString('vi-VN', { timeZone: 'UTC' });
-                formattedGioRa = dateRa.toLocaleTimeString('vi-VN', { 
-                    hour: '2-digit', 
-                    minute: '2-digit', 
-                    timeZone: 'UTC' 
-                });
-            }
-
-            row.innerHTML = `
-                <td>${item.MaNhanVienNoiBo}</td>
-                <td>${item.HoTen}</td>
-                <td>${formattedNgay}</td>
-                <td>${formattedNgayVao}</td>
-                <td>${formattedNgayRa}</td>
-                <td>${formattedGioVao}</td>
-                <td>${formattedGioRa}</td>
-                <td>${item.ThoiGianLamViec ? item.ThoiGianLamViec.toFixed(4) : '---'}</td>
-                <td>${item.TrangThai}</td>
-            `;
-            tbody.appendChild(row);
-        });
-    }
         
         let charts = {};
 
@@ -284,7 +316,6 @@
             };
         });
 
-        // Tạo và xuất file Excel từ dữ liệu đã được xử lý
         const worksheet = XLSX.utils.json_to_sheet(dataToExport);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Chấm Công');
@@ -296,7 +327,6 @@
 
         XLSX.writeFile(workbook, fileName);
     }
-</script>
-
+    </script>
 </body>
 </html>

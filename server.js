@@ -21,6 +21,9 @@ app.use(express.raw({ type: '*/*', limit: '2mb' }));
 // Sử dụng các route đã định nghĩa
 app.use('/', hanetRoutes);
 
+// 🌟 THÊM DÒNG NÀY ĐỂ PHỤC VỤ CÁC FILE TĨNH TỪ THƯ MỤC 'PUBLIC' 🌟
+app.use(express.static('public'));
+
 // Bắt đầu server
 app.listen(PORT, async () => {
     try {
