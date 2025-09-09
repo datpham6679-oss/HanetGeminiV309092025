@@ -84,7 +84,46 @@ router.post('/hanet-webhook', async (req, res) => {
     return res.status(200).json({ ok: true });
 });
 
-// Endpoint mới để lấy danh sách phòng ban
+router.post('/add-employee', async (req, res) => {
+    try {
+        const { maNhanVien, hoTen, phongBan, chucVu } = req.body;
+        
+        if (!maNhanVien || !hoTen) {
+            return res.status(400).json({ error: 'Mã nhân viên và Họ tên là bắt buộc.' });
+        }
+
+        const pool = await poolPromise;
+        const request = pool.request();
+
+        const query = `
+            MERGE NhanVien AS target
+            USING (VALUES (@maNhanVien, @hoTen, @phongBan, @chucVu)) AS source (MaNhanVienNoiBo, HoTen, PhongBan, ChucVu)
+            ON target.MaNhanVienNoiBo = source.MaNhanVienNoiBo
+            WHEN NOT MATCHED THEN
+                INSERT (MaNhanVienNoiBo, HoTen, PhongBan, ChucVu)
+                VALUES (source.MaNhanVienNoiBo, source.HoTen, source.PhongBan, source.ChucVu)
+            WHEN MATCHED THEN
+                UPDATE SET
+                    target.HoTen = source.HoTen,
+                    target.PhongBan = source.PhongBan,
+                    target.ChucVu = source.ChucVu;
+        `;
+
+        request.input('maNhanVien', sql.NVarChar(50), maNhanVien);
+        request.input('hoTen', sql.NVarChar(200), hoTen);
+        request.input('phongBan', sql.NVarChar(100), phongBan || null);
+        request.input('chucVu', sql.NVarChar(100), chucVu || null);
+        
+        await request.query(query);
+
+        res.status(200).json({ message: 'Thêm/cập nhật nhân viên thành công.' });
+
+    } catch (err) {
+        console.error('Lỗi SQL khi thêm nhân viên:', err);
+        res.status(500).json({ error: 'Lỗi máy chủ khi thêm nhân viên.' });
+    }
+});
+
 router.get('/departments', async (req, res) => {
     try {
         const pool = await poolPromise;
@@ -187,7 +226,6 @@ router.get('/attendance-data', async (req, res) => {
             request.input('status', sql.NVarChar(50), status.trim());
         }
 
-        // Thêm điều kiện lọc theo phòng ban
         if (department) {
             whereClauses.push(`nv.PhongBan = @department`);
             request.input('department', sql.NVarChar(100), department);
