@@ -16,8 +16,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.raw({ type: '*/*', limit: '2mb' }));
 
-// Cấu hình để phục vụ file tĩnh (THAY ĐỔI TẠI ĐÂY)
-app.use(express.static('.'));
+
 
 // Sử dụng các route đã định nghĩa
 app.use('/', hanetRoutes);
@@ -32,3 +31,5 @@ app.listen(PORT, async () => {
         console.error('❌ Server không thể kết nối tới cơ sở dữ liệu:', err);
     }
 });
+
+//sao lưu đưa lên github lúc 3:41PM 09092025
