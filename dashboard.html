@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Chấm Công</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
+        .container { max-width: 1200px; margin: auto; padding: 20px; background-color: #fff; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; text-align: center; }
+        .filters { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; padding: 15px; background-color: #f9f9f9; border-radius: 8px; }
+        .filters label, .filters input, .filters select { font-size: 14px; }
+        .filters button { padding: 8px 15px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .filters button:hover { background-color: #0056b3; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #e2e2e2; }
+        .charts-container { display: flex; justify-content: space-around; gap: 20px; margin-top: 30px; }
+        .chart-box { width: 50%; max-width: 500px; padding: 20px; background-color: #fff; box-shadow: 0 0 8px rgba(0,0,0,0.1); border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dashboard Chấm Công</h1>
+        
+        <div class="filters">
+            <div>
+                <label for="startDate">Từ ngày:</label>
+                <input type="date" id="startDate">
+            </div>
+            <div>
+                <label for="endDate">Đến ngày:</label>
+                <input type="date" id="endDate">
+            </div>
+            <div>
+                <label for="personId">Mã Nhân viên:</label>
+                <input type="text" id="personId" placeholder="VD: 300029">
+            </div>
+            <div>
+                <label for="status">Trạng thái:</label>
+                <select id="status">
+                    <option value="">-- Tất cả --</option>
+                    <option value="Đúng giờ">Đúng giờ</option>
+                    <option value="Không đúng giờ quy định">Không đúng giờ quy định</option>
+                </select>
+            </div>
+            <button onclick="fetchAndDisplayData()">Lọc và Hiển thị</button>
+            <button onclick="exportToExcel()">Xuất Excel</button>
+        </div>
+
+        <div class="charts-container">
+            <div class="chart-box">
+                <canvas id="timeChart"></canvas>
+            </div>
+            <div class="chart-box">
+                <canvas id="statusChart"></canvas>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Mã Nhân Viên</th>
+                    <th>Họ và Tên</th>
+                    <th>Ngày công</th>
+                    <th>Ngày vào</th>
+                    <th>Ngày ra</th>
+                    <th>Giờ vào</th>
+                    <th>Giờ ra</th>
+                    <th>Thời gian làm việc (giờ)</th>
+                    <th>Trạng thái</th>
+                </tr>
+            </thead>
+            <tbody id="attendance-data">
+                </tbody>
+        </table>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', fetchAndDisplayData);
+        let currentData = []; // Biến toàn cục để lưu trữ dữ liệu hiện tại
+
+        async function fetchAndDisplayData() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const personId = document.getElementById('personId').value;
+            const status = document.getElementById('status').value;
+
+            const params = new URLSearchParams();
+            if (startDate !== '') {
+                params.append('startDate', startDate);
+            }
+            if (endDate !== '') {
+                params.append('endDate', endDate);
+            }
+            if (personId !== '') {
+                params.append('personId', personId);
+            }
+            if (status !== '') {
+                params.append('status', status);
+            }
+
+            const url = `/attendance-data?${params.toString()}`;
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error('Lỗi khi lấy dữ liệu từ API: ' + errorData.error);
+                }
+                const data = await response.json();
+                
+                // Lưu dữ liệu vào biến toàn cục để sử dụng cho chức năng xuất Excel
+                currentData = data;
+                
+                displayTableData(data);
+                createCharts(data);
+
+            } catch (error) {
+                console.error('Lỗi:', error);
+                const tbody = document.getElementById('attendance-data');
+                tbody.innerHTML = `<tr><td colspan="9">Không thể tải dữ liệu. Vui lòng kiểm tra server.</td></tr>`;
+            }
+        }
+
+        function displayTableData(data) {
+        const tbody = document.getElementById('attendance-data');
+        tbody.innerHTML = ''; // Xóa dữ liệu cũ
+
+        if (data.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="9">Không có dữ liệu chấm công nào.</td></tr>`;
+            return;
+        }
+
+        data.forEach(item => {
+            const row = document.createElement('tr');
+            
+            // Lấy và định dạng ngày tháng
+            const formattedNgay = new Date(item.Ngay).toLocaleDateString('vi-VN');
+            
+            // Xử lý ngày/giờ vào và ra
+            let formattedNgayVao = '---';
+            let formattedNgayRa = '---';
+            let formattedGioVao = '---';
+            let formattedGioRa = '---';
+
+            if (item.GioVao) {
+                const dateVao = new Date(item.GioVao);
+                formattedNgayVao = dateVao.toLocaleDateString('vi-VN', { timeZone: 'UTC' });
+                formattedGioVao = dateVao.toLocaleTimeString('vi-VN', { 
+                    hour: '2-digit', 
+                    minute: '2-digit', 
+                    timeZone: 'UTC' 
+                });
+            }
+
+            if (item.GioRa) {
+                const dateRa = new Date(item.GioRa);
+                formattedNgayRa = dateRa.toLocaleDateString('vi-VN', { timeZone: 'UTC' });
+                formattedGioRa = dateRa.toLocaleTimeString('vi-VN', { 
+                    hour: '2-digit', 
+                    minute: '2-digit', 
+                    timeZone: 'UTC' 
+                });
+            }
+
+            row.innerHTML = `
+                <td>${item.MaNhanVienNoiBo}</td>
+                <td>${item.HoTen}</td>
+                <td>${formattedNgay}</td>
+                <td>${formattedNgayVao}</td>
+                <td>${formattedNgayRa}</td>
+                <td>${formattedGioVao}</td>
+                <td>${formattedGioRa}</td>
+                <td>${item.ThoiGianLamViec ? item.ThoiGianLamViec.toFixed(4) : '---'}</td>
+                <td>${item.TrangThai}</td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+        
+        let charts = {};
+
+        function createCharts(data) {
+            if (charts.timeChart) charts.timeChart.destroy();
+            if (charts.statusChart) charts.statusChart.destroy();
+
+            const timeLabels = data.map(item => new Date(item.Ngay).toLocaleDateString('vi-VN'));
+            const timeData = data.map(item => item.ThoiGianLamViec ? item.ThoiGianLamViec.toFixed(2) : 0);
+            const timeCtx = document.getElementById('timeChart').getContext('2d');
+            charts.timeChart = new Chart(timeCtx, {
+                type: 'bar',
+                data: {
+                    labels: timeLabels,
+                    datasets: [{
+                        label: 'Thời gian làm việc (giờ)',
+                        data: timeData,
+                        backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: { display: true, text: 'Thời gian làm việc theo ngày' }
+                    },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+
+            const statusCount = data.reduce((acc, item) => {
+                acc[item.TrangThai] = (acc[item.TrangThai] || 0) + 1;
+                return acc;
+            }, {});
+            const statusLabels = Object.keys(statusCount);
+            const statusValues = Object.values(statusCount);
+            const statusCtx = document.getElementById('statusChart').getContext('2d');
+            charts.statusChart = new Chart(statusCtx, {
+                type: 'pie',
+                data: {
+                    labels: statusLabels,
+                    datasets: [{
+                        data: statusValues,
+                        backgroundColor: ['rgba(75, 192, 192, 0.6)', 'rgba(255, 99, 132, 0.6)'],
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: { display: true, text: 'Tỷ lệ trạng thái chấm công' }
+                    }
+                }
+            });
+        }
+        
+       function exportToExcel() {
+        if (currentData.length === 0) {
+            alert('Không có dữ liệu để xuất!');
+            return;
+        }
+
+        const dataToExport = currentData.map(item => {
+            const formattedNgayCong = new Date(item.Ngay).toLocaleDateString('vi-VN');
+            
+            let formattedNgayVao = '';
+            let formattedNgayRa = '';
+            let formattedGioVao = '';
+            let formattedGioRa = '';
+
+            if (item.GioVao) {
+                const dateVao = new Date(item.GioVao);
+                formattedNgayVao = dateVao.toLocaleDateString('vi-VN', { timeZone: 'UTC' });
+                formattedGioVao = dateVao.toLocaleTimeString('vi-VN', { 
+                    hour: '2-digit', 
+                    minute: '2-digit', 
+                    timeZone: 'UTC' 
+                });
+            }
+
+            if (item.GioRa) {
+                const dateRa = new Date(item.GioRa);
+                formattedNgayRa = dateRa.toLocaleDateString('vi-VN', { timeZone: 'UTC' });
+                formattedGioRa = dateRa.toLocaleTimeString('vi-VN', { 
+                    hour: '2-digit', 
+                    minute: '2-digit', 
+                    timeZone: 'UTC' 
+                });
+            }
+
+            return {
+                'Mã Nhân Viên': item.MaNhanVienNoiBo,
+                'Họ và Tên': item.HoTen,
+                'Ngày công': formattedNgayCong,
+                'Ngày vào': formattedNgayVao,
+                'Ngày ra': formattedNgayRa,
+                'Giờ vào': formattedGioVao,
+                'Giờ ra': formattedGioRa,
+                'Thời gian làm việc (giờ)': item.ThoiGianLamViec ? item.ThoiGianLamViec.toFixed(4) : '',
+                'Trạng thái': item.TrangThai
+            };
+        });
+
+        // Tạo và xuất file Excel từ dữ liệu đã được xử lý
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Chấm Công');
+        
+        const now = new Date();
+        const date = `${now.getDate()}-${now.getMonth() + 1}-${now.getFullYear()}`;
+        const time = `${now.getHours()}-${now.getMinutes()}`;
+        const fileName = `DuLieuChamCong_${date}_${time}.xlsx`;
+
+        XLSX.writeFile(workbook, fileName);
+    }
+</script>
+
+</body>
+</html>

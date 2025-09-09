@@ -14,15 +14,16 @@ const PORT = process.env.PORT || 1888;
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-// Middleware để xử lý các payload thô, đảm bảo nhận được dữ liệu webhook
 app.use(express.raw({ type: '*/*', limit: '2mb' }));
 
-// Sử dụng các route đã định nghĩa, không cần tiền tố /api
+// Cấu hình để phục vụ file tĩnh (THAY ĐỔI TẠI ĐÂY)
+app.use(express.static('.'));
+
+// Sử dụng các route đã định nghĩa
 app.use('/', hanetRoutes);
 
 // Bắt đầu server
 app.listen(PORT, async () => {
-    // Kết nối tới cơ sở dữ liệu khi server khởi động
     try {
         await poolPromise;
         console.log(`🚀 Server đang lắng nghe tại http://localhost:${PORT}`);
